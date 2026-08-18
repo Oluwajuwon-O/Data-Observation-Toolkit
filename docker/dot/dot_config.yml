@@ -25,5 +25,5 @@ EduProject_db:
   pass: "{{ env_var('POSTGRES_PASSWORD') }}"
   port: 5432
   dbname: dot_db
-  schema: data_dot_data_education
+  schema: education
   threads: 4
