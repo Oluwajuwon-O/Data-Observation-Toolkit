@@ -4,3 +4,4 @@
 
 # Airflow stuff:
 airflow/logs
+airflow/dags/secrets/
