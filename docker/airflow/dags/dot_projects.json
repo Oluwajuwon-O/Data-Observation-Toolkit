@@ -2,43 +2,18 @@
     "target_connid": "dot_db",
     "dot_projects":[
         {
-            "project_id":"ScanProject1",
-            "source_connid": "dot_data",
+            "project_id":"UDTSProject",
+            "source_connid": "staging-udts-01",
+            "source_schema": "synth_demo_gold_dhss_demo01",
             "earliest_date_to_sync":"2021-10-02",
             "objects":[
                 {
-                    "object":"airport_data",
-                    "id_field":"uuid"
+                    "object":"Enrollment",
+                    "id_field":"OrganizationIdentifier"
                 },
                 {
-                    "object":"flight_data",
-                    "id_field":"uuid",
-                    "date_field":"departure_time"
-                }
-            ]
-        },
-        {
-            "project_id":"EduProject",
-            "source_connid": "dot_data",
-            "source_schema": "education",
-            "earliest_date_to_sync":"2023-01-01",
-            "objects":[
-                {
-                    "object":"students",
-                    "id_field":"student_id",
-                    "date_field":"enrollment_date"
-                },
-                {
-                    "object":"courses",
-                    "id_field":"course_id"
-                },
-                {
-                    "object":"enrollments",
-                    "id_field":"enrollment_id"
-                },
-                {
-                    "object":"excel_grades",
-                    "id_field":"grade_id"
+                    "object":"TermLookup",
+                    "id_field":"BeginDate"
                 }
             ]
         }
