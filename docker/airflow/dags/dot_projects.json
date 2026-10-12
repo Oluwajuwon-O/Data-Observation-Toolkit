@@ -10,10 +10,6 @@
                 {
                     "object":"Enrollment",
                     "id_field":"OrganizationIdentifier"
-                },
-                {
-                    "object":"TermLookup",
-                    "id_field":"BeginDate"
                 }
             ]
         }
