@@ -7,6 +7,7 @@ It will:
     2. Run DOT
 """
 import json
+import glob
 from os import system
 from datetime import datetime
 import pandas as pd
@@ -17,6 +18,86 @@ from airflow.hooks.postgres_hook import PostgresHook  # pylint: disable=import-e
 from airflow.hooks.base import BaseHook  # pylint: disable=import-error
 from airflow.models import Variable  # pylint: disable=import-error
 from sqlalchemy import create_engine
+from google.cloud import bigquery
+
+def get_bigquery_client(bigquery_project_id):
+
+    path_to_key_file = "./secrets/*.json"
+    key_files = glob.glob(path_to_key_file)
+
+    if not key_files or len(key_files) == 0:
+        raise FileNotFoundError(f"No Google Cloud key found in {path_to_key_file}")
+
+    key_file = key_files[0]
+    client = bigquery.Client.from_service_account_json(
+        key_file,
+        project= bigquery_project_id
+    )
+    return client
+
+def get_bigquery_object(
+        object_name_in,
+        earliest_date_to_sync,
+        source_conn_in,
+        source_schema_in,
+        ):
+    """
+
+    Extracts data from object in source Postgres DB and saves to target DOT database in data schema.
+
+    Parameters
+    ----------
+    object_name_in: String
+       The Postgres db object to sync to DOT DB
+    earliest_date_to_sync: String
+        Only sync data after this date
+    date_field: String
+        Date field on each record for this object. Set None if one wasn't provided for DB object
+    source_conn_in: String
+       Airflow connection ID where data lives.
+       Note, the connection name must exactly equal the db name.
+    columns_to_exclude: Array
+        A list of names to exclude from the sync
+    """
+
+    sql_stmt = (
+            "SELECT * FROM "
+            + "`" 
+            + source_conn_in
+            + "."
+            + source_schema_in 
+            + "."
+            + object_name_in
+            + "`"
+    )
+    print(sql_stmt)
+
+    client = get_bigquery_client(bigquery_project_id= source_conn_in)
+    rows = client.query(sql_stmt)
+    result = rows.result()
+    data = result.to_dataframe()
+
+    bq_to_pg_types = {
+    "STRING": "text",
+    "INT64": "bigint",
+    "FLOAT64": "double precision",
+    "NUMERIC": "numeric",
+    "INTEGER" : "bigint",
+    "BIGNUMERIC": "numeric",
+    "BOOL": "boolean",
+    "BOOLEAN": "boolean",
+    "DATE": "date",
+    "DATETIME": "timestamp",
+    "TIMESTAMP": "timestamptz",
+    "BYTES": "bytea",
+    "JSON": "jsonb"
+    }
+
+    schema = result.schema
+    column_list = [col.name for col in schema]
+    type_list = [bq_to_pg_types[col.field_type] for col in schema]
+
+    return data, column_list, type_list
 
 
 def get_object(
@@ -263,6 +344,7 @@ def sync_object(
         target_conn_in,
         columns_to_exclude,
         source_schema_in,
+        DB_type,
         id_field=None,
         ):
     """
@@ -286,14 +368,23 @@ def sync_object(
     """
 
     # Get the data
-    data, column_list, type_list = get_object(
-        object_name_in,
-        earliest_date_to_sync,
-        date_field,
-        source_conn_in,
-        columns_to_exclude,
-        source_schema_in,
-    )
+
+    if DB_type == "BigQuery":
+        data, column_list, type_list = get_bigquery_object(
+            object_name_in,
+            earliest_date_to_sync,
+            source_conn_in,
+            source_schema_in,
+        )
+    else:
+        data, column_list, type_list = get_object(
+            object_name_in,
+            earliest_date_to_sync,
+            date_field,
+            source_conn_in,
+            columns_to_exclude,
+            source_schema_in,
+        )
 
     # Save the data
     save_object(
@@ -417,6 +508,7 @@ with DAG(
         source_conn - Airflow connection to define where source data is
         source_db   - Source database name
         """
+        DB_type = project['DB_type']
         project_id = project["project_id"]
         objects_to_sync = project["objects"]
         earliest_date_to_sync = project["earliest_date_to_sync"]
@@ -467,6 +559,7 @@ with DAG(
                         "columns_to_exclude": columns_to_exclude,
                         "source_schema_in": source_schema,
                         "id_field": id_field,
+                        "DB_type": DB_type
                     },
                     dag=dag,
                 )

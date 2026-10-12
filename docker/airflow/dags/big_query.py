@@ -25,11 +25,12 @@ from google.cloud import bigquery
 def get_bigquery_client(bigquery_project_id):
 
     path_to_key_file = "./secrets/*.json"
-    key_file = glob.glob(path_to_key_file)[0]
+    key_files = glob.glob(path_to_key_file)
 
-    if not key_file:
+    if not key_files or len(key_files) == 0:
         raise FileNotFoundError(f"No Google Cloud key found in {path_to_key_file}")
 
+    key_file = key_files[0]
     client = bigquery.Client.from_service_account_json(
         key_file,
         project= bigquery_project_id
@@ -65,15 +66,50 @@ def get_object(
         A list of names to exclude from the sync
     """
 
-    connection = get_bigquery_client(source_conn_in)
-
     sql_stmt = (
             "SELECT * FROM "
-            + source_schema_in
+            + "`" 
+            + source_conn_in
+            + "."
+            + source_schema_in 
             + "."
             + object_name_in
+            + "`"
     )
     print(sql_stmt)
+
+    client = get_bigquery_client(bigquery_project_id= source_conn_in)
+    rows = client.query(sql_stmt)
+    result = rows.result()
+    data = result.to_dataframe()
+
+    bq_to_pg_types = {
+    "STRING": "text",
+    "INT64": "bigint",
+    "FLOAT64": "double precision",
+    "NUMERIC": "numeric",
+    "INTEGER" : "bigint",
+    "BIGNUMERIC": "numeric",
+    "BOOL": "boolean",
+    "BOOLEAN": "boolean",
+    "DATE": "date",
+    "DATETIME": "timestamp",
+    "TIMESTAMP": "timestamptz",
+    "BYTES": "bytea",
+    "JSON": "jsonb"
+    }
+
+    schema = result.schema
+    column_list = [col.name for col in schema]
+    type_list = [bq_to_pg_types[col.field_type] for col in schema]
+
+    return data, column_list, type_list
+
+
+
+
+
+
 
 config = json.loads(open("./dot_projects.json").read())
 
