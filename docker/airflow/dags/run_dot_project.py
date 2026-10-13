@@ -8,9 +8,12 @@ It will:
 """
 import json
 import glob
+import os
+import tempfile
 from os import system
 from datetime import datetime
 import pandas as pd
+# from sqlalchemy.engine import cursor
 from airflow.models import DAG  # pylint: disable=import-error
 from airflow.operators.python import PythonOperator  # pylint: disable=import-error
 from airflow.operators.bash_operator import BashOperator  # pylint: disable=import-error
@@ -22,7 +25,8 @@ from google.cloud import bigquery
 
 def get_bigquery_client(bigquery_project_id):
 
-    path_to_key_file = "./secrets/*.json"
+    dags_dir = os.path.dirname(os.path.abspath(__file__))
+    path_to_key_file = os.path.join(dags_dir, "secrets", "*.json")
     key_files = glob.glob(path_to_key_file)
 
     if not key_files or len(key_files) == 0:
@@ -319,15 +323,39 @@ def save_object(
         cur.execute(query)
 
     print("Saving data to: " + schema + "." + object_name_in)
-    data_in.to_sql(
-        object_name_in, engine, index=False, if_exists=MODE, schema=schema
+    # data_in.to_sql(
+    #     object_name_in, engine, index=False, if_exists=MODE, schema=schema
+    # )
+
+    data_in.head(0).to_sql(
+        object_name_in, engine, index= False, if_exists= MODE, schema= schema
     )
+
+    fd, csv_path = tempfile.mkstemp(suffix=".csv")
+    os.close(fd)
+    try:
+        data_in.to_csv(
+            csv_path, index= False, header= False
+        )
+
+        conn = engine.raw_connection()
+
+        try:
+            cursor = conn.cursor()
+            copy_sql = f'COPY "{schema}"."{object_name_in}" FROM STDIN WITH (FORMAT CSV)'
+            with open(csv_path, 'r') as f:
+                cursor.copy_expert(copy_sql, f)                
+            conn.commit()     
+        finally:
+            conn.close()
+    finally:
+        os.remove(csv_path)
 
     for i in range(len(column_list_in)):
         col = column_list_in[i]
         type = type_list_in[i]
-        using = f"USING {col}::{type}"
-        query = f"ALTER TABLE {schema}.{object_name_in} ALTER COLUMN {col} TYPE {type} {using};"
+        using = f'USING "{col}"::{type}'
+        query = f'ALTER TABLE "{schema}"."{object_name_in}" ALTER COLUMN "{col}" TYPE {type} {using};'
         with PostgresHook(
                 postgres_conn_id=target_conn_in, schema=target_conn_in
         ).get_conn() as conn:
