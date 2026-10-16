@@ -372,17 +372,21 @@ def sync_object(
         target_conn_in,
         columns_to_exclude,
         source_schema_in,
-        DB_type,
+        source_type,
         id_field=None,
         ):
     """
 
-    Extracts data from object in source Postgres DB and saves to target DOT database in data schema.
+    Copies one source object into the DOT Postgres database.
+
+    source_type chooses where the rows are read from. "BigQuery" uses the
+    BigQuery client. Any other value uses the Postgres source connection.
+    The destination is always the DOT Postgres database.
 
     Parameters
     ----------
     object_name_in: String
-       The Postgres db object to sync to DOT DB
+       The source object to sync to the DOT DB
     earliest_date_to_sync: String
         Only sync data after this date
     date_field: String
@@ -393,11 +397,12 @@ def sync_object(
        ID of Airflow connection, must same as name of DB
     columns_to_exclude: Array
         A list of names to exclude from the sync
+    source_type: String
+        Source system for this project, for example "BigQuery" or "Postgres"
     """
 
-    # Get the data
-
-    if DB_type == "BigQuery":
+    # source_type is the system we read from, not the DOT database we write to.
+    if source_type == "BigQuery":
         data, column_list, type_list = get_bigquery_object(
             object_name_in,
             earliest_date_to_sync,
@@ -534,9 +539,11 @@ with DAG(
             of unique field and date field
         earliest_date_to_sync - Only sync data after this date for project
         source_conn - Airflow connection to define where source data is
-        source_db   - Source database name
+        source_schema - Schema or BigQuery dataset that holds the source objects
+        source_type - Source system to read from ("BigQuery" or Postgres)
         """
-        DB_type = project['DB_type']
+        # "BigQuery" selects the BigQuery reader. Anything else uses Postgres.
+        source_type = project["source_type"]
         project_id = project["project_id"]
         objects_to_sync = project["objects"]
         earliest_date_to_sync = project["earliest_date_to_sync"]
@@ -573,7 +580,7 @@ with DAG(
                 else []
             )
 
-            # Get the data from a object in Postgres and copy to target DB
+            # Copy this source object into the DOT Postgres database.
             af_tasks.append(
                 PythonOperator(
                     task_id=f"sync_object_{project_id}_{object_name}",
@@ -587,7 +594,7 @@ with DAG(
                         "columns_to_exclude": columns_to_exclude,
                         "source_schema_in": source_schema,
                         "id_field": id_field,
-                        "DB_type": DB_type
+                        "source_type": source_type
                     },
                     dag=dag,
                 )

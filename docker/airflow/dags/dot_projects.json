@@ -2,7 +2,7 @@
     "target_connid": "dot_db",
     "dot_projects":[
         {
-            "DB_type": "BigQuery",
+            "source_type": "BigQuery",
             "project_id":"UDTSProject",
             "source_connid": "staging-udts-01",
             "source_schema": "synth_demo_gold_dhss_demo01_static",
